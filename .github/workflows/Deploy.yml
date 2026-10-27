@@ -18,6 +18,7 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
@@ -26,12 +27,53 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Verify website
+      - name: Prepare website automatically
+        shell: bash
         run: |
-          test -f public/index.html || {
-            echo "ERROR: public/index.html not found"
-            exit 1
-          }
+          set -e
+
+          mkdir -p _site _extracted
+
+          # Extract any project ZIP uploaded to the repository
+          while IFS= read -r -d '' zipfile; do
+            echo "Extracting: $zipfile"
+            unzip -oq "$zipfile" -d _extracted
+          done < <(
+            find . -type f -name '*.zip' \
+              -not -path './.git/*' \
+              -not -path './_extracted/*' \
+              -print0
+          )
+
+          # Find the website entry point
+          if [ -f index.html ]; then
+            SITE_DIR="."
+          elif [ -f public/index.html ]; then
+            SITE_DIR="public"
+          else
+            INDEX_FILE=$(
+              find . _extracted -type f -name index.html \
+                -not -path './.git/*' \
+                -not -path './_site/*' \
+                -not -path './.github/*' \
+                | head -n 1
+            )
+
+            if [ -z "$INDEX_FILE" ]; then
+              echo "ERROR: No index.html found."
+              echo "Upload the extracted project files or its ZIP."
+              exit 1
+            fi
+
+            SITE_DIR="${INDEX_FILE%/*}"
+          fi
+
+          echo "Website folder: $SITE_DIR"
+          cp -a "$SITE_DIR"/. _site/
+
+          test -f _site/index.html
+          echo "Website files prepared successfully."
+          ls -la _site
 
       - name: Configure Pages
         uses: actions/configure-pages@v5
@@ -39,7 +81,7 @@ jobs:
       - name: Upload website
         uses: actions/upload-pages-artifact@v3
         with:
-          path: public
+          path: _site
 
       - name: Deploy website
         id: deployment
