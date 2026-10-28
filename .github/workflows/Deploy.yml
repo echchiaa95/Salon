@@ -26,56 +26,42 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Extract and prepare website
+      - name: Extract project ZIP and prepare site
         shell: bash
         run: |
           set -e
           mkdir -p _source _site
 
-          while IFS= read -r -d '' file; do
-            echo "Extracting $file"
-            unzip -oq "$file" -d _source
-          done < <(
-            find . -type f -name '*.zip' \
-              -not -path './.git/*' \
-              -not -path './_source/*' \
-              -not -path './_site/*' -print0
-          )
+          ZIP_FILE="Beauty-Spa-Professional-Theme-Languages.zip"
 
-          INDEX=""
-          for root in . _source; do
-            if [ -f "$root/index.html" ]; then
-              INDEX="$root/index.html"
-              break
-            fi
-            if [ -f "$root/public/index.html" ]; then
-              INDEX="$root/public/index.html"
-              break
-            fi
-          done
-
-          if [ -z "$INDEX" ]; then
-            INDEX=$(find . _source \
-              -type f -name index.html \
-              -not -path './.git/*' \
-              -not -path './.github/*' \
-              -not -path './_site/*' \
-              | head -n 1 || true)
-          fi
-
-          if [ -z "$INDEX" ]; then
-            echo "ERROR: No index.html found in uploaded files or ZIP."
+          if [ ! -f "$ZIP_FILE" ]; then
+            echo "ERROR: Project ZIP not found in repository root."
+            find . -maxdepth 2 -type f
             exit 1
           fi
 
-          SITE_DIR="${INDEX%/*}"
-          [ "$SITE_DIR" != "$INDEX" ] || SITE_DIR="."
-          cp -a "$SITE_DIR"/. _site/
+          unzip -oq "$ZIP_FILE" -d _source
 
-          test -s _site/index.html
+          if [ -f _source/index.html ]; then
+            cp _source/index.html _site/index.html
+          elif [ -f _source/public/index.html ]; then
+            cp -a _source/public/. _site/
+          else
+            INDEX=$(find _source -type f -name index.html | head -n 1)
+            if [ -z "$INDEX" ]; then
+              echo "ERROR: ZIP contains no index.html."
+              exit 1
+            fi
+            cp "$INDEX" _site/index.html
+          fi
+
+          if [ -d _source/assets ]; then
+            cp -a _source/assets _site/
+          fi
+
           touch _site/.nojekyll
-          echo "Website prepared successfully."
-          ls -la _site
+          test -s _site/index.html
+          echo "Website is ready to deploy."
 
       - name: Configure Pages
         uses: actions/configure-pages@v5
